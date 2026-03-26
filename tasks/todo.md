@@ -160,7 +160,7 @@ Date: 2026-03-25
 
 - [x] Define the repo-level completion contract for third-party skill repos
 - [x] Add `skills_index.json` support to vendor repo completion
-- [x] Add an example `skills_index.json` to this repo
+- [x] Validate the `skills_index.json` contract with a fixture vendor repo
 - [x] Verify the new index path and fallback behavior in tests
 
 ## Vendor Index Review
@@ -170,6 +170,19 @@ Date: 2026-03-25
 - Third-party repos can now publish `skills_index.json` at repo root and have `ai add --vendor <repo> <TAB>` use it directly.
 - Backward compatibility is preserved for `skills-index.json` and for repos with no index file.
 - Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `19 passed in 2.10s`.
+
+## Future Todo
+
+- [ ] Add a CLI command to generate or refresh a local `skills_index.json` when local index-based workflows are needed
+- [ ] Add a CLI command to generate a vendor repo `skills_index.json` when a vendored catalog does not ship one
+
+## Local Scan Mode Review
+
+Date: 2026-03-25
+
+- Local `ai add <TAB>` remains scan-based over `skills/`; the repo no longer ships a root `skills_index.json`.
+- `skills_index.json` remains an optional vendor-publishing artifact and a future generator target, not current local state.
+- Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `23 passed in 2.89s`.
 
 ## Vendor Install Follow-up
 

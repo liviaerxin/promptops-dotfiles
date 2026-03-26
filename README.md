@@ -30,7 +30,6 @@ Just like personal dotfiles for your shell, **promptops-dotfiles** centralizes y
 ├── vendor/                # Optional local vendor catalogs (git clones)
 │   └── (installed on demand)
 ├── vendor-sources.json    # Shipped references for known vendor catalogs
-├── skills_index.json      # Optional repo-level skill index for vendor completion
 ├── skill-bundles.json     # Curated local bundles of skill refs
 ├── tests/                 # Pytest suite
 └── .venv/                 # Local test environment
@@ -39,6 +38,14 @@ Just like personal dotfiles for your shell, **promptops-dotfiles** centralizes y
 ---
 
 ## 🛠 Installation
+
+### Environment
+
+- Tested working environment: macOS
+- Expected to work on: Linux
+- Runtime requirements: `bash`, `python3`, `git`
+- Test-only requirement: `pytest`
+- Optional shell integration: `zsh`
 
 1. **Clone the repo:**
    ```bash
@@ -71,8 +78,8 @@ ai vendor install https://github.com/sickn33/antigravity-awesome-skills.git
 
 mkdir my-project && cd my-project
 ai init
-ai add capture
-ai add --vendor antigravity-awesome-skills mcp-builder
+ai add <local-skill>
+ai add --vendor <vendor-repo> <vendor-skill>
 ```
 
 The shipped vendor references live in `vendor-sources.json`.
@@ -100,9 +107,15 @@ ai vendor install https://github.com/sickn33/antigravity-awesome-skills.git
 
 Inject specific brains from your hub into the current project.
 ```bash
+ai add <local-skill>
+ai add --vendor <vendor-repo> <vendor-skill>
+ai add --bundle basic
+```
+
+Concrete examples:
+```bash
 ai add capture
 ai add --vendor antigravity-awesome-skills mcp-builder
-ai add --bundle basic
 ```
 
 ### 3. Sync Fresh Clones
@@ -123,14 +136,14 @@ ai remove local:capture
 For `zsh`, the installer adds completion automatically. The intended interaction is:
 ```bash
 ai <TAB>
-ai add <TAB>                  # local skills
-ai add --vendor <TAB>         # vendor repos
-ai add --vendor repo <TAB>    # skills within that vendor repo
+ai add <TAB>                  # local skill names
+ai add --vendor <TAB>         # vendor repo names
+ai add --vendor <repo> <TAB>  # skill names within that vendor repo
 ai add --bundle <TAB>         # bundle names
 ```
 
-### 6. Publishing This Repo for Others
-If someone vendors this repo under their own `vendor/<repo>` directory, dynamic completion can come from a repo-level `skills_index.json`.
+### 6. Publishing a Vendor Repo for Others
+Local `ai add <TAB>` currently scans `skills/` directly. If you choose to publish a vendor repo for others later, dynamic vendor completion can come from a repo-level `skills_index.json`.
 
 Preferred layout:
 ```text
@@ -158,6 +171,7 @@ Notes:
 - `ai vendor install <git-url>` clones into `vendor/<repo-name>` by default.
 - Use `--name <vendor>` if you want a shorter local alias.
 - `ai vendor install` is the only networked step; `ai add`, `ai sync`, and completion stay local.
+- `ai add <TAB>` uses scan mode over local `skills/` today.
 - `ai add --vendor <repo> <TAB>` reads `skills_index.json` first.
 - If no index is present, the CLI falls back to scanning `skills/`.
 - `skills-index.json` is still accepted for compatibility.
@@ -181,7 +195,8 @@ Use a two-layer model:
 
 ```bash
 ai init
-ai add <skills>
+ai add <local-skill>
+ai add --vendor <vendor-repo> <vendor-skill>
 ai add --bundle basic
 # later, on fresh clones (if .agentic.json is present):
 ai sync
