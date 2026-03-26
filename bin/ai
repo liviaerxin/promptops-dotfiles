@@ -8,10 +8,11 @@ PROJECT_ROOT="$PWD"
 PROJECT_SKILLS=".agents/skills"
 MANIFEST_FILE=".agentic.json"
 BUNDLES_FILE="$CENTRAL_REPO/skill-bundles.json"
+VENDOR_SOURCES_FILE="$CENTRAL_REPO/vendor-sources.json"
 AGENTS_TEMPLATE="$CENTRAL_REPO/templates/AGENTS.md"
 
 print_usage() {
-    echo "Usage: ai [init | sync | install | add <local-skill> | add --vendor <repo> <skill> | add --bundle <bundle> | vendor install <git-url> [--name <vendor>] | remove <skill-ref> | list | completion zsh]"
+    echo "Usage: ai [init | sync | install | add <local-skill> | add --vendor <repo> <skill> | add --bundle <bundle> | vendor list | vendor install <git-url> [--name <vendor>] | remove <skill-ref> | list | completion zsh]"
 }
 
 ensure_manifest_file() {
@@ -561,6 +562,29 @@ list_active_skill_refs() {
     fi
 }
 
+list_known_vendor_sources() {
+    if [ -f "$VENDOR_SOURCES_FILE" ]; then
+        python3 - "$VENDOR_SOURCES_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r") as f:
+    data = json.load(f)
+
+vendors = data.get("vendors", [])
+for vendor in vendors:
+    if not isinstance(vendor, dict):
+        continue
+    name = vendor.get("name")
+    url = vendor.get("url")
+    description = vendor.get("description", "")
+    if not name or not url:
+        continue
+    print(f"{name}\t{url}\t{description}")
+PY
+    fi
+}
+
 print_zsh_completion() {
     cat <<'EOF'
 #compdef ai
@@ -580,7 +604,7 @@ _ai() {
     'sync:restore active skills from the manifest'
     'install:compatibility alias for sync'
     'add:add local skills, vendor skills, or bundles'
-    'vendor:install local vendor catalogs'
+    'vendor:discover and install vendor catalogs'
     'remove:remove active skill refs'
     'list:list available and active refs'
     'completion:print shell completion script'
@@ -641,6 +665,7 @@ _ai() {
     vendor)
       local -a vendor_commands
       vendor_commands=(
+        'list:list shipped vendor references'
         'install:clone a vendor repo into local vendor storage'
       )
 
@@ -963,14 +988,37 @@ cmd_vendor_install() {
     echo "🔗 Source: $url"
 }
 
+cmd_vendor_list() {
+    echo "📚 Known Vendor Sources:"
+
+    local printed=0
+    while IFS=$'\t' read -r name url description; do
+        [ -n "$name" ] || continue
+        printed=1
+        if [ -n "$description" ]; then
+            printf '%s\t%s\t%s\n' "$name" "$url" "$description"
+        else
+            printf '%s\t%s\n' "$name" "$url"
+        fi
+    done < <(list_known_vendor_sources)
+
+    if [ "$printed" -eq 0 ]; then
+        echo "(none)"
+    fi
+}
+
 cmd_vendor() {
     case "${1:-}" in
+        list)
+            shift
+            cmd_vendor_list "$@"
+            ;;
         install)
             shift
             cmd_vendor_install "$@"
             ;;
         *)
-            echo "Usage: ai vendor install <git-url> [--name <vendor>]"
+            echo "Usage: ai vendor [list | install <git-url> [--name <vendor>]]"
             exit 1
             ;;
     esac

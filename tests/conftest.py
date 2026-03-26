@@ -78,6 +78,21 @@ def repo_root(tmp_path):
 """.strip()
     )
 
+    # Shipped vendor references used by `ai vendor list`
+    (tmp_path / "vendor-sources.json").write_text(
+        """
+{
+  "vendors": [
+    {
+      "name": "antigravity-awesome-skills",
+      "url": "https://github.com/sickn33/antigravity-awesome-skills.git",
+      "description": "Community skills catalog for agent workflows."
+    }
+  ]
+}
+""".strip()
+    )
+
     # AGENTS template used by init
     (templates_dir / "AGENTS.md").write_text(
         "# AGENTS.md\n\nTemplate bootstrap for project instructions.\n"

@@ -29,6 +29,7 @@ Just like personal dotfiles for your shell, **promptops-dotfiles** centralizes y
 │   └── AGENTS.md
 ├── vendor/                # Optional local vendor catalogs (git clones)
 │   └── (installed on demand)
+├── vendor-sources.json    # Shipped references for known vendor catalogs
 ├── skills_index.json      # Optional repo-level skill index for vendor completion
 ├── skill-bundles.json     # Curated local bundles of skill refs
 ├── tests/                 # Pytest suite
@@ -62,6 +63,22 @@ bash bin/install-ai --dir "$HOME/bin" --no-path
 
 ---
 
+## ⚡ Quick Start
+
+```bash
+ai vendor list
+ai vendor install https://github.com/sickn33/antigravity-awesome-skills.git
+
+mkdir my-project && cd my-project
+ai init
+ai add capture
+ai add --vendor antigravity-awesome-skills mcp-builder
+```
+
+The shipped vendor references live in `vendor-sources.json`.
+
+---
+
 ## 📖 Usage Guide
 
 ### 1. Initialize a Project
@@ -71,6 +88,11 @@ ai init
 ```
 
 ### 2. Add Skills
+See the shipped vendor references:
+```bash
+ai vendor list
+```
+
 Install a vendor catalog once, then use it locally:
 ```bash
 ai vendor install https://github.com/sickn33/antigravity-awesome-skills.git
@@ -131,6 +153,8 @@ Recommended index shape:
 ```
 
 Notes:
+- `ai vendor list` prints the shipped vendor references from `vendor-sources.json`.
+- `vendor-sources.json` is a curated reference list, not a lockfile or registry.
 - `ai vendor install <git-url>` clones into `vendor/<repo-name>` by default.
 - Use `--name <vendor>` if you want a shorter local alias.
 - `ai vendor install` is the only networked step; `ai add`, `ai sync`, and completion stay local.

@@ -60,6 +60,7 @@ The repository should let users fetch a third-party vendor skill catalog once an
 - OUT: Auto-update daemons, multiple transport backends, remote registries, auth orchestration UX, or implicit fetching during `ai add`
 
 ### Acceptance Criteria
+- [ ] `ai vendor list` prints the shipped curated vendor references from a repo file
 - [ ] `ai vendor install <git-url>` clones the repo into `vendor/<derived-name>`
 - [ ] `ai vendor install <git-url> --name <vendor>` clones the repo into `vendor/<vendor>`
 - [ ] If the target vendor directory already exists, the CLI exits non-zero with a clear error
@@ -76,9 +77,11 @@ The repository should let users fetch a third-party vendor skill catalog once an
 ### Assumptions
 - Git is available in the user environment
 - Repo basenames such as `antigravity-awesome-skills.git` should normalize to `antigravity-awesome-skills`
+- Curated known vendors can be shipped as static references in a repo file such as `vendor-sources.json`
 
 ### Refinement Notes
 - **Added:** Explicit vendor acquisition via `ai vendor install <git-url>`
+- **Added:** `ai vendor list` for shipped copy-paste vendor references
 - **Clarified:** Git is the only supported backend for v1, so the command does not require a transport selector
 - **Still open:** None
 

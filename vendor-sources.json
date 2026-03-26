@@ -1,0 +1,9 @@
+{
+  "vendors": [
+    {
+      "name": "antigravity-awesome-skills",
+      "url": "https://github.com/sickn33/antigravity-awesome-skills.git",
+      "description": "Community skills catalog for agent workflows."
+    }
+  ]
+}

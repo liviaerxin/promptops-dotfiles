@@ -349,6 +349,14 @@ def test_list(ai_cmd, repo_root, tmp_path):
     assert "local:basic" in result.stdout
     assert "Active in Project" in result.stdout
 
+def test_vendor_list_shows_shipped_vendor_references(ai_cmd, repo_root):
+    """Verify `ai vendor list` prints the shipped vendor source references."""
+    result = run_cmd([ai_cmd, "vendor", "list"], repo_root)
+    assert result.returncode == 0
+    assert "Known Vendor Sources" in result.stdout
+    assert "antigravity-awesome-skills" in result.stdout
+    assert "https://github.com/sickn33/antigravity-awesome-skills.git" in result.stdout
+
 def test_completion_zsh_outputs_completion_script(ai_cmd, tmp_path):
     """Verify ai completion zsh prints a usable zsh completion function."""
     project_dir = tmp_path / "project"
@@ -363,7 +371,8 @@ def test_completion_zsh_outputs_completion_script(ai_cmd, tmp_path):
     assert "compdef _ai ai" in result.stdout
     assert "'init:initialize a project workspace'" in result.stdout
     assert "'add:add local skills, vendor skills, or bundles'" in result.stdout
-    assert "'vendor:install local vendor catalogs'" in result.stdout
+    assert "'vendor:discover and install vendor catalogs'" in result.stdout
+    assert "'list:list shipped vendor references'" in result.stdout
 
 def test_completion_internal_lists_refs(ai_cmd, tmp_path):
     """Verify internal completion candidates match add/bundle/remove UX."""

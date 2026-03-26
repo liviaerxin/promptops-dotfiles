@@ -201,3 +201,18 @@ Date: 2026-03-25
 - `ai vendor install` now runs `git clone --progress` directly instead of buffering clone output.
 - Users now see both the target install path and git's own clone progress while the command runs.
 - Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `22 passed in 11.96s`.
+
+## Vendor Reference Follow-up
+
+- [x] Ship a curated vendor reference file with the antigravity catalog URL
+- [x] Add `ai vendor list` to expose shipped references in the CLI
+- [x] Update README usage so people can copy-paste a known vendor install flow
+- [x] Verify the CLI suite after adding vendor discovery
+
+## Vendor Reference Review
+
+Date: 2026-03-25
+
+- Added a shipped `vendor-sources.json` file so users have a built-in copy-paste vendor reference.
+- Added `ai vendor list` so the reference is discoverable from the CLI instead of only from docs.
+- Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `23 passed in 2.93s`.
