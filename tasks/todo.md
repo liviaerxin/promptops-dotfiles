@@ -170,3 +170,20 @@ Date: 2026-03-25
 - Third-party repos can now publish `skills_index.json` at repo root and have `ai add --vendor <repo> <TAB>` use it directly.
 - Backward compatibility is preserved for `skills-index.json` and for repos with no index file.
 - Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `19 passed in 2.10s`.
+
+## Vendor Install Follow-up
+
+- [x] Lock the command shape to `ai vendor install <git-url> [--name <vendor>]`
+- [x] Implement vendor repo installation into local `vendor/`
+- [x] Add tests for default repo-name derivation and `--name` override
+- [x] Update docs and requirements so `vendor install` is the only networked step
+- [x] Verify the CLI suite after the new command lands
+
+## Vendor Install Review
+
+Date: 2026-03-25
+
+- Added `ai vendor install <git-url> [--name <vendor>]` as the explicit acquisition step for third-party catalogs.
+- Default vendor names are derived from repo basenames and normalized to strip a trailing `.git`.
+- `ai add`, `ai sync`, and completion remain local-only after install.
+- Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `22 passed in 2.72s`.

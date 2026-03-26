@@ -14,6 +14,34 @@ def run_cmd(cmd_list, cwd):
     )
     return result
 
+def make_git_vendor_repo(base_dir, name):
+    """Create a local git repo that mimics a vendor skill catalog."""
+    repo_dir = base_dir / name
+    repo_dir.mkdir()
+    (repo_dir / "skills").mkdir()
+    (repo_dir / "skills" / "remote-skill").mkdir()
+    (repo_dir / "skills" / "remote-skill" / "SKILL.md").write_text("# Remote Skill")
+    (repo_dir / "skills_index.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "skills": [
+                    {"id": "remote-skill", "path": "skills/remote-skill"},
+                ],
+            }
+        )
+    )
+    subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "Initial"],
+        cwd=repo_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return repo_dir
+
 def test_init(ai_cmd, tmp_path):
     """Verify init creates necessary directories and manifest."""
     project_dir = tmp_path / "project"
@@ -89,6 +117,54 @@ def test_add_vendor_skill(ai_cmd, repo_root, tmp_path):
             "source": "vendor",
         }
     ]
+
+def test_vendor_install_uses_repo_name_by_default(ai_cmd, repo_root, tmp_path):
+    """Verify `ai vendor install` derives the local vendor name from the repo basename."""
+    source_repo = make_git_vendor_repo(tmp_path, "catalog-source.git")
+
+    result = run_cmd([ai_cmd, "vendor", "install", str(source_repo)], repo_root)
+    assert result.returncode == 0
+    assert f"Installed {source_repo} into {repo_root / 'vendor' / 'catalog-source'}" in result.stdout
+    assert "Vendor repo: catalog-source" in result.stdout
+
+    installed_repo = repo_root / "vendor" / "catalog-source"
+    assert installed_repo.is_dir()
+    assert (installed_repo / "skills" / "remote-skill" / "SKILL.md").exists()
+
+    project_dir = tmp_path / "project-default-vendor"
+    project_dir.mkdir()
+    run_cmd([ai_cmd, "init"], project_dir)
+
+    add_result = run_cmd([ai_cmd, "add", "--vendor", "catalog-source", "remote-skill"], project_dir)
+    assert add_result.returncode == 0
+    assert (project_dir / ".agents" / "skills" / "remote-skill").resolve() == (installed_repo / "skills" / "remote-skill")
+
+def test_vendor_install_supports_name_override(ai_cmd, repo_root, tmp_path):
+    """Verify `ai vendor install --name` installs under the requested local vendor name."""
+    source_repo = make_git_vendor_repo(tmp_path, "override-source.git")
+
+    result = run_cmd(
+        [ai_cmd, "vendor", "install", str(source_repo), "--name", "custom-vendor"],
+        repo_root,
+    )
+    assert result.returncode == 0
+    assert f"Installed {source_repo} into {repo_root / 'vendor' / 'custom-vendor'}" in result.stdout
+    assert "Vendor repo: custom-vendor" in result.stdout
+
+    installed_repo = repo_root / "vendor" / "custom-vendor"
+    assert installed_repo.is_dir()
+    assert (installed_repo / "skills_index.json").exists()
+
+def test_vendor_install_fails_if_target_exists(ai_cmd, repo_root, tmp_path):
+    """Verify `ai vendor install` refuses to overwrite an existing vendor directory."""
+    source_repo = make_git_vendor_repo(tmp_path, "duplicate-source.git")
+
+    first_result = run_cmd([ai_cmd, "vendor", "install", str(source_repo)], repo_root)
+    assert first_result.returncode == 0
+
+    second_result = run_cmd([ai_cmd, "vendor", "install", str(source_repo)], repo_root)
+    assert second_result.returncode != 0
+    assert "already exists" in second_result.stdout
 
 def test_add_personal_skill_with_quote(ai_cmd, repo_root, tmp_path):
     """Verify skill names with quotes don't break manifest updates."""
@@ -282,6 +358,7 @@ def test_completion_zsh_outputs_completion_script(ai_cmd, tmp_path):
     assert "compdef _ai ai" in result.stdout
     assert "'init:initialize a project workspace'" in result.stdout
     assert "'add:add local skills, vendor skills, or bundles'" in result.stdout
+    assert "'vendor:install local vendor catalogs'" in result.stdout
 
 def test_completion_internal_lists_refs(ai_cmd, tmp_path):
     """Verify internal completion candidates match add/bundle/remove UX."""

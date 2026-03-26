@@ -11,7 +11,7 @@ BUNDLES_FILE="$CENTRAL_REPO/skill-bundles.json"
 AGENTS_TEMPLATE="$CENTRAL_REPO/templates/AGENTS.md"
 
 print_usage() {
-    echo "Usage: ai [init | sync | install | add <local-skill> | add --vendor <repo> <skill> | add --bundle <bundle> | remove <skill-ref> | list | completion zsh]"
+    echo "Usage: ai [init | sync | install | add <local-skill> | add --vendor <repo> <skill> | add --bundle <bundle> | vendor install <git-url> [--name <vendor>] | remove <skill-ref> | list | completion zsh]"
 }
 
 ensure_manifest_file() {
@@ -379,6 +379,50 @@ PY
     ln -sf "$path" "$PROJECT_SKILLS/$name"
 }
 
+derive_vendor_name() {
+    python3 - "$1" <<'PY'
+import os
+import sys
+from urllib.parse import urlparse
+
+value = sys.argv[1].strip().rstrip("/")
+if not value:
+    sys.exit(1)
+
+if value.startswith("git@") and ":" in value:
+    path = value.split(":", 1)[1]
+else:
+    parsed = urlparse(value)
+    path = parsed.path if parsed.scheme else value
+
+name = os.path.basename(path.rstrip("/"))
+if name.endswith(".git"):
+    name = name[:-4]
+
+if not name or name in {".", ".."}:
+    sys.exit(1)
+
+print(name)
+PY
+}
+
+display_path() {
+    python3 - "$1" <<'PY'
+import os
+import sys
+
+path = os.path.abspath(sys.argv[1])
+home = os.path.expanduser("~")
+
+if path == home:
+    print("~")
+elif path.startswith(home + os.sep):
+    print("~" + path[len(home):])
+else:
+    print(path)
+PY
+}
+
 list_available_skills() {
     if [ -d "$CENTRAL_REPO/skills" ]; then
         local skill
@@ -536,6 +580,7 @@ _ai() {
     'sync:restore active skills from the manifest'
     'install:compatibility alias for sync'
     'add:add local skills, vendor skills, or bundles'
+    'vendor:install local vendor catalogs'
     'remove:remove active skill refs'
     'list:list available and active refs'
     'completion:print shell completion script'
@@ -592,6 +637,30 @@ _ai() {
       skills=("${(@f)$(__ai_complete local-candidates)}")
       _describe 'skill' skills
       return
+      ;;
+    vendor)
+      local -a vendor_commands
+      vendor_commands=(
+        'install:clone a vendor repo into local vendor storage'
+      )
+
+      if (( CURRENT == 3 )); then
+        _describe 'vendor command' vendor_commands
+        return
+      fi
+
+      case ${words[3]:-} in
+        install)
+          if [[ $prev == --name ]]; then
+            return
+          fi
+          return
+          ;;
+        *)
+          _describe 'vendor command' vendor_commands
+          return
+          ;;
+      esac
       ;;
     remove)
       active=("${(@f)$(__ai_complete active)}")
@@ -822,6 +891,91 @@ cmd_add() {
     fi
 }
 
+cmd_vendor_install() {
+    local url=""
+    local name=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --name)
+                if [ -z "${2:-}" ]; then
+                    echo "Usage: ai vendor install <git-url> [--name <vendor>]"
+                    exit 1
+                fi
+                name=$2
+                shift 2
+                ;;
+            --*)
+                echo "Usage: ai vendor install <git-url> [--name <vendor>]"
+                exit 1
+                ;;
+            *)
+                if [ -n "$url" ]; then
+                    echo "Usage: ai vendor install <git-url> [--name <vendor>]"
+                    exit 1
+                fi
+                url=$1
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$url" ]; then
+        echo "Usage: ai vendor install <git-url> [--name <vendor>]"
+        exit 1
+    fi
+
+    if [ -z "$name" ]; then
+        if ! name=$(derive_vendor_name "$url"); then
+            echo "❌ Unable to derive a vendor name from '$url'."
+            exit 1
+        fi
+    fi
+
+    case "$name" in
+        ""|"."|".."|*/*|*:* )
+            echo "❌ Invalid vendor name '$name'."
+            exit 1
+            ;;
+    esac
+
+    mkdir -p "$CENTRAL_REPO/vendor"
+
+    local target="$CENTRAL_REPO/vendor/$name"
+    if [ -e "$target" ]; then
+        echo "❌ Vendor '$name' already exists at $target."
+        exit 1
+    fi
+
+    local clone_output=""
+    if ! clone_output=$(git clone --depth 1 "$url" "$target" 2>&1); then
+        rm -rf "$target"
+        echo "❌ Failed to install vendor repo from '$url'."
+        [ -n "$clone_output" ] && echo "$clone_output"
+        exit 1
+    fi
+
+    local display_target
+    display_target=$(display_path "$target")
+
+    echo "📥 Installed $url into $display_target"
+    echo "📦 Vendor repo: $name"
+    echo "🔗 Source: $url"
+}
+
+cmd_vendor() {
+    case "${1:-}" in
+        install)
+            shift
+            cmd_vendor_install "$@"
+            ;;
+        *)
+            echo "Usage: ai vendor install <git-url> [--name <vendor>]"
+            exit 1
+            ;;
+    esac
+}
+
 # Command: remove
 cmd_remove() {
     if [ -z "$1" ]; then
@@ -927,6 +1081,10 @@ case "$1" in
     add)
         shift
         cmd_add "$@"
+        ;;
+    vendor)
+        shift
+        cmd_vendor "$@"
         ;;
     remove)
         shift

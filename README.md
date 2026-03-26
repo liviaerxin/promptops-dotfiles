@@ -27,8 +27,8 @@ Just like personal dotfiles for your shell, **promptops-dotfiles** centralizes y
 │   └── ...
 ├── templates/             # Bootstrap templates for new projects
 │   └── AGENTS.md
-├── vendor/                # Community skills (Git Submodules)
-│   └── (optional downloads)
+├── vendor/                # Optional local vendor catalogs (git clones)
+│   └── (installed on demand)
 ├── skills_index.json      # Optional repo-level skill index for vendor completion
 ├── skill-bundles.json     # Curated local bundles of skill refs
 ├── tests/                 # Pytest suite
@@ -71,6 +71,11 @@ ai init
 ```
 
 ### 2. Add Skills
+Install a vendor catalog once, then use it locally:
+```bash
+ai vendor install https://github.com/sickn33/antigravity-awesome-skills.git
+```
+
 Inject specific brains from your hub into the current project.
 ```bash
 ai add capture
@@ -126,6 +131,9 @@ Recommended index shape:
 ```
 
 Notes:
+- `ai vendor install <git-url>` clones into `vendor/<repo-name>` by default.
+- Use `--name <vendor>` if you want a shorter local alias.
+- `ai vendor install` is the only networked step; `ai add`, `ai sync`, and completion stay local.
 - `ai add --vendor <repo> <TAB>` reads `skills_index.json` first.
 - If no index is present, the CLI falls back to scanning `skills/`.
 - `skills-index.json` is still accepted for compatibility.

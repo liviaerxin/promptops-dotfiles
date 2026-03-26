@@ -16,7 +16,7 @@ The repository provides a personal promptops CLI for activating only the skills 
 
 ### Scope
 - IN: Add local skills, add vendor skills through an explicit vendor-repo flow, restore project skill links from a manifest, record skill and bundle provenance, and support named skill bundles
-- OUT: Remote registries, dependency resolution, versioned packages, interactive TUIs, and network installs
+- OUT: Remote registries, dependency resolution, versioned packages, interactive TUIs, and implicit network installs during skill activation
 
 ### Acceptance Criteria
 - [ ] `ai add <skill>` adds a local skill when the name is unique and records it in the manifest with explicit source metadata
@@ -46,6 +46,44 @@ The repository provides a personal promptops CLI for activating only the skills 
 
 ---
 
+## Vendor Repo Installation
+
+**FR-004** — The `ai` CLI must install third-party vendor skill repos into local `vendor/` storage without coupling acquisition to skill activation.  
+**Status:** Approved  
+**Priority:** P1  
+
+### Description
+The repository should let users fetch a third-party vendor skill catalog once and then use it locally for later `ai add --vendor ...` operations. The install flow should stay explicit and small: clone a git repo into `vendor/<name>`, defaulting the local vendor name from the repo basename unless the user overrides it.
+
+### Scope
+- IN: Explicit git-based vendor installation, default local vendor-name derivation from repo basename, optional `--name` override, and local storage under `vendor/`
+- OUT: Auto-update daemons, multiple transport backends, remote registries, auth orchestration UX, or implicit fetching during `ai add`
+
+### Acceptance Criteria
+- [ ] `ai vendor install <git-url>` clones the repo into `vendor/<derived-name>`
+- [ ] `ai vendor install <git-url> --name <vendor>` clones the repo into `vendor/<vendor>`
+- [ ] If the target vendor directory already exists, the CLI exits non-zero with a clear error
+- [ ] After install, `ai add --vendor <name> <skill>` works against the local clone without additional network access
+
+### Constraints
+- Keep acquisition and activation as separate commands
+- Keep `ai add`, `ai sync`, and completion local-only
+- Avoid introducing pluggable backend syntax until more than one backend exists
+
+### Open Questions
+- [ ] None
+
+### Assumptions
+- Git is available in the user environment
+- Repo basenames such as `antigravity-awesome-skills.git` should normalize to `antigravity-awesome-skills`
+
+### Refinement Notes
+- **Added:** Explicit vendor acquisition via `ai vendor install <git-url>`
+- **Clarified:** Git is the only supported backend for v1, so the command does not require a transport selector
+- **Still open:** None
+
+---
+
 ## AI CLI Zsh Completion
 
 **FR-002** — The `ai` CLI must provide interactive zsh completion that is fast for local skills and explicit for vendor skills.  
@@ -60,7 +98,7 @@ The shell completion experience must support rapid discovery of local skills whi
 - OUT: Bash or fish completion, fuzzy search UI, ranking, or shell-specific UI beyond standard completion lists
 
 ### Acceptance Criteria
-- [ ] `ai <TAB>` completes top-level commands such as `init`, `sync`, `add`, `remove`, `list`, and `completion`, with a short description for each command
+- [ ] `ai <TAB>` completes top-level commands such as `init`, `sync`, `add`, `vendor`, `remove`, `list`, and `completion`, with a short description for each command
 - [ ] `ai add <TAB>` completes local skill names such as `capture` and `recap` from the central local skill set
 - [ ] `ai add --vendor <TAB>` completes vendor repo names
 - [ ] `ai add --vendor <repo> <TAB>` completes skill names within the selected vendor repo instead of scanning vendor skills during the default local completion path
