@@ -947,16 +947,16 @@ cmd_vendor_install() {
         exit 1
     fi
 
-    local clone_output=""
-    if ! clone_output=$(git clone --depth 1 "$url" "$target" 2>&1); then
-        rm -rf "$target"
-        echo "❌ Failed to install vendor repo from '$url'."
-        [ -n "$clone_output" ] && echo "$clone_output"
-        exit 1
-    fi
-
     local display_target
     display_target=$(display_path "$target")
+
+    echo "📥 Installing $url into $display_target..."
+
+    if ! git clone --depth 1 --progress "$url" "$target"; then
+        rm -rf "$target"
+        echo "❌ Failed to install vendor repo from '$url'."
+        exit 1
+    fi
 
     echo "📥 Installed $url into $display_target"
     echo "📦 Vendor repo: $name"

@@ -121,11 +121,14 @@ def test_add_vendor_skill(ai_cmd, repo_root, tmp_path):
 def test_vendor_install_uses_repo_name_by_default(ai_cmd, repo_root, tmp_path):
     """Verify `ai vendor install` derives the local vendor name from the repo basename."""
     source_repo = make_git_vendor_repo(tmp_path, "catalog-source.git")
+    source_url = source_repo.as_uri()
 
-    result = run_cmd([ai_cmd, "vendor", "install", str(source_repo)], repo_root)
+    result = run_cmd([ai_cmd, "vendor", "install", source_url], repo_root)
     assert result.returncode == 0
-    assert f"Installed {source_repo} into {repo_root / 'vendor' / 'catalog-source'}" in result.stdout
+    assert f"Installing {source_url} into {repo_root / 'vendor' / 'catalog-source'}" in result.stdout
+    assert f"Installed {source_url} into {repo_root / 'vendor' / 'catalog-source'}" in result.stdout
     assert "Vendor repo: catalog-source" in result.stdout
+    assert "Cloning into" in result.stderr
 
     installed_repo = repo_root / "vendor" / "catalog-source"
     assert installed_repo.is_dir()
@@ -142,13 +145,14 @@ def test_vendor_install_uses_repo_name_by_default(ai_cmd, repo_root, tmp_path):
 def test_vendor_install_supports_name_override(ai_cmd, repo_root, tmp_path):
     """Verify `ai vendor install --name` installs under the requested local vendor name."""
     source_repo = make_git_vendor_repo(tmp_path, "override-source.git")
+    source_url = source_repo.as_uri()
 
     result = run_cmd(
-        [ai_cmd, "vendor", "install", str(source_repo), "--name", "custom-vendor"],
+        [ai_cmd, "vendor", "install", source_url, "--name", "custom-vendor"],
         repo_root,
     )
     assert result.returncode == 0
-    assert f"Installed {source_repo} into {repo_root / 'vendor' / 'custom-vendor'}" in result.stdout
+    assert f"Installed {source_url} into {repo_root / 'vendor' / 'custom-vendor'}" in result.stdout
     assert "Vendor repo: custom-vendor" in result.stdout
 
     installed_repo = repo_root / "vendor" / "custom-vendor"
@@ -158,11 +162,12 @@ def test_vendor_install_supports_name_override(ai_cmd, repo_root, tmp_path):
 def test_vendor_install_fails_if_target_exists(ai_cmd, repo_root, tmp_path):
     """Verify `ai vendor install` refuses to overwrite an existing vendor directory."""
     source_repo = make_git_vendor_repo(tmp_path, "duplicate-source.git")
+    source_url = source_repo.as_uri()
 
-    first_result = run_cmd([ai_cmd, "vendor", "install", str(source_repo)], repo_root)
+    first_result = run_cmd([ai_cmd, "vendor", "install", source_url], repo_root)
     assert first_result.returncode == 0
 
-    second_result = run_cmd([ai_cmd, "vendor", "install", str(source_repo)], repo_root)
+    second_result = run_cmd([ai_cmd, "vendor", "install", source_url], repo_root)
     assert second_result.returncode != 0
     assert "already exists" in second_result.stdout
 

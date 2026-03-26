@@ -187,3 +187,17 @@ Date: 2026-03-25
 - Default vendor names are derived from repo basenames and normalized to strip a trailing `.git`.
 - `ai add`, `ai sync`, and completion remain local-only after install.
 - Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `22 passed in 2.72s`.
+
+## Vendor Install UX Follow-up
+
+- [x] Stream `git clone` progress during `ai vendor install`
+- [x] Keep the destination path visible before and after clone completes
+- [x] Verify clone output is surfaced in tests
+
+## Vendor Install UX Review
+
+Date: 2026-03-25
+
+- `ai vendor install` now runs `git clone --progress` directly instead of buffering clone output.
+- Users now see both the target install path and git's own clone progress while the command runs.
+- Verification: `.venv/bin/pytest tests/test_ai_cli.py` passed with `22 passed in 11.96s`.
