@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Agentic Workspace (Local State)
+.agents/
+.agent/
+CLAUDE.md
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project Manifest Pointer (Optional)
+# Uncomment the line below if you want to keep .agentic.json out of source control
+# .agentic.json
+.agentic.json
+.codex/
+.agents/
+/AGENTS.md

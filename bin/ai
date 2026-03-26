@@ -1,0 +1,950 @@
+#!/bin/bash
+
+# Configuration
+# Resolve real path of this script using Python (robust to symlinks)
+REAL_SCRIPT_PATH=$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "${BASH_SOURCE[0]}")
+CENTRAL_REPO="$(cd "$(dirname "$REAL_SCRIPT_PATH")/.." && pwd)"
+PROJECT_ROOT="$PWD"
+PROJECT_SKILLS=".agents/skills"
+MANIFEST_FILE=".agentic.json"
+BUNDLES_FILE="$CENTRAL_REPO/skill-bundles.json"
+AGENTS_TEMPLATE="$CENTRAL_REPO/templates/AGENTS.md"
+
+print_usage() {
+    echo "Usage: ai [init | sync | install | add <local-skill> | add --vendor <repo> <skill> | add --bundle <bundle> | remove <skill-ref> | list | completion zsh]"
+}
+
+ensure_manifest_file() {
+    if [ ! -f "$MANIFEST_FILE" ]; then
+        cat > "$MANIFEST_FILE" <<'EOF'
+{
+  "version": 2,
+  "skills": [],
+  "bundles": []
+}
+EOF
+    fi
+}
+
+# Helper: JSON manipulation using Python
+manifest_add_skill() {
+    local name=$1
+    local ref=$2
+    local source=$3
+    local via=${4:-}
+    ensure_manifest_file
+    python3 - "$MANIFEST_FILE" "$name" "$ref" "$source" "$via" <<'PY'
+import json
+import os
+import sys
+
+manifest_file = sys.argv[1]
+name = sys.argv[2]
+ref = sys.argv[3]
+source = sys.argv[4]
+via = sys.argv[5] or None
+
+if os.path.exists(manifest_file):
+    with open(manifest_file, 'r') as f:
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError:
+            data = {}
+else:
+    data = {}
+
+skills = data.get('skills', [])
+normalized_skills = []
+for skill in skills:
+    if isinstance(skill, str):
+        normalized_skills.append({
+            'name': skill.split('/')[-1],
+            'ref': skill,
+            'source': 'legacy'
+        })
+    else:
+        normalized_skills.append(skill)
+
+data['version'] = 2
+data['skills'] = normalized_skills
+data.setdefault('bundles', [])
+
+for skill in data['skills']:
+    if skill.get('ref') == ref:
+        skill['name'] = name
+        skill['source'] = source
+        if via:
+            skill['via'] = via
+        elif 'via' not in skill:
+            skill.pop('via', None)
+        break
+else:
+    record = {
+        'name': name,
+        'ref': ref,
+        'source': source
+    }
+    if via:
+        record['via'] = via
+    data['skills'].append(record)
+
+with open(manifest_file, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
+}
+
+manifest_add_bundle() {
+    local name=$1
+    local ref=$2
+    local source=$3
+    ensure_manifest_file
+    python3 - "$MANIFEST_FILE" "$name" "$ref" "$source" <<'PY'
+import json
+import os
+import sys
+
+manifest_file = sys.argv[1]
+name = sys.argv[2]
+ref = sys.argv[3]
+source = sys.argv[4]
+
+if os.path.exists(manifest_file):
+    with open(manifest_file, 'r') as f:
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError:
+            data = {}
+else:
+    data = {}
+
+skills = data.get('skills', [])
+normalized_skills = []
+for skill in skills:
+    if isinstance(skill, str):
+        normalized_skills.append({
+            'name': skill.split('/')[-1],
+            'ref': skill,
+            'source': 'legacy'
+        })
+    else:
+        normalized_skills.append(skill)
+
+bundles = data.get('bundles', [])
+normalized_bundles = []
+for bundle in bundles:
+    if isinstance(bundle, str):
+        normalized_bundles.append({
+            'name': bundle,
+            'ref': bundle,
+            'source': 'legacy'
+        })
+    else:
+        normalized_bundles.append(bundle)
+
+data['version'] = 2
+data['skills'] = normalized_skills
+data['bundles'] = normalized_bundles
+
+for bundle in data['bundles']:
+    if bundle.get('ref') == ref:
+        bundle['name'] = name
+        bundle['source'] = source
+        break
+else:
+    data['bundles'].append({
+        'name': name,
+        'ref': ref,
+        'source': source
+    })
+
+with open(manifest_file, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
+}
+
+manifest_remove_skill() {
+    local target=$1
+    if [ ! -f "$MANIFEST_FILE" ]; then
+        return
+    fi
+    python3 - "$MANIFEST_FILE" "$target" <<'PY'
+import json
+import sys
+
+manifest_file = sys.argv[1]
+target = sys.argv[2]
+
+with open(manifest_file, "r") as f:
+    data = json.load(f)
+
+skills = data.get('skills', [])
+normalized_skills = []
+for skill in skills:
+    if isinstance(skill, str):
+        normalized_skills.append({
+            'name': skill.split('/')[-1],
+            'ref': skill,
+            'source': 'legacy'
+        })
+    else:
+        normalized_skills.append(skill)
+
+data['version'] = 2
+data['skills'] = [
+    skill for skill in normalized_skills
+    if skill.get('ref') != target and skill.get('name') != target
+]
+data.setdefault('bundles', [])
+
+with open(manifest_file, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
+}
+
+read_manifest_records() {
+    if [ -f "$MANIFEST_FILE" ]; then
+        python3 - "$MANIFEST_FILE" <<'PY' 2>/dev/null
+import json
+import sys
+
+manifest_file = sys.argv[1]
+with open(manifest_file, "r") as f:
+    data = json.load(f)
+
+for skill in data.get("skills", []):
+    if isinstance(skill, str):
+        name = skill.split("/")[-1]
+        ref = skill
+        source = "legacy"
+        via = ""
+    else:
+        name = skill.get("name", skill.get("ref", "").split("/")[-1])
+        ref = skill.get("ref", name)
+        source = skill.get("source", "legacy")
+        via = skill.get("via", "")
+    print(f"{name}\t{ref}\t{source}\t{via}")
+PY
+    fi
+}
+
+normalize_bundle_ref() {
+    local ref=$1
+    if [[ "$ref" == *:* ]]; then
+        echo "$ref"
+    else
+        echo "local:$ref"
+    fi
+}
+
+resolve_bundle() {
+    local requested=$1
+    local bundle_ref
+    bundle_ref=$(normalize_bundle_ref "$requested")
+
+    python3 - "$BUNDLES_FILE" "$bundle_ref" <<'PY'
+import json
+import sys
+
+bundles_file = sys.argv[1]
+bundle_ref = sys.argv[2]
+
+source, _, name = bundle_ref.partition(':')
+if source != "local" or not name:
+    sys.exit(1)
+
+with open(bundles_file, "r") as f:
+    data = json.load(f)
+
+bundle = data.get(name)
+if bundle is None:
+    sys.exit(1)
+
+if isinstance(bundle, list):
+    skills = bundle
+else:
+    skills = bundle.get("skills", [])
+
+print(name)
+print(bundle_ref)
+print("local")
+for skill_ref in skills:
+    print(skill_ref)
+PY
+}
+
+collect_vendor_candidates() {
+    local skill_name=$1
+    if [ ! -d "$CENTRAL_REPO/vendor" ]; then
+        return
+    fi
+
+    local path
+    while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        local repo skill
+        repo=$(basename "$(dirname "$(dirname "$path")")")
+        skill=$skill_name
+        if [[ "$path" == *.md ]]; then
+            skill=$(basename "$path" .md)
+        fi
+        printf 'vendor:%s/%s|vendor|%s|%s\n' "$repo" "$skill" "$skill" "$path"
+    done < <(find "$CENTRAL_REPO/vendor" -mindepth 3 -maxdepth 3 \( -type d -name "$skill_name" -o -type f -name "$skill_name.md" \) 2>/dev/null | sort)
+}
+
+resolve_skill() {
+    local requested=$1
+    local candidates=()
+
+    if [[ "$requested" == local:* ]]; then
+        local skill_name=${requested#local:}
+        local path="$CENTRAL_REPO/skills/$skill_name"
+        if [ -e "$path" ]; then
+            printf 'local:%s|local|%s|%s\n' "$skill_name" "$skill_name" "$path"
+            return 0
+        fi
+        return 1
+    fi
+
+    if [[ "$requested" == vendor:* ]]; then
+        local vendor_spec=${requested#vendor:}
+        local repo=${vendor_spec%%/*}
+        local skill_name=${vendor_spec#*/}
+        local dir_path="$CENTRAL_REPO/vendor/$repo/skills/$skill_name"
+        local file_path="$CENTRAL_REPO/vendor/$repo/skills/$skill_name.md"
+        if [ -e "$dir_path" ]; then
+            printf 'vendor:%s/%s|vendor|%s|%s\n' "$repo" "$skill_name" "$skill_name" "$dir_path"
+            return 0
+        fi
+        if [ -e "$file_path" ]; then
+            printf 'vendor:%s/%s|vendor|%s|%s\n' "$repo" "$skill_name" "$skill_name" "$file_path"
+            return 0
+        fi
+        return 1
+    fi
+
+    local local_path="$CENTRAL_REPO/skills/$requested"
+    if [ -e "$local_path" ]; then
+        candidates+=("local:$requested|local|$requested|$local_path")
+    fi
+
+    while IFS= read -r candidate; do
+        [ -z "$candidate" ] && continue
+        candidates+=("$candidate")
+    done < <(collect_vendor_candidates "$requested")
+
+    if [ "${#candidates[@]}" -eq 1 ]; then
+        printf '%s\n' "${candidates[0]}"
+        return 0
+    fi
+
+    if [ "${#candidates[@]}" -eq 0 ]; then
+        return 1
+    fi
+
+    echo "❌ Skill '$requested' is ambiguous. Use one of:" >&2
+    printf '  %s\n' "${candidates[@]%%|*}" >&2
+    return 2
+}
+
+link_resolved_skill() {
+    local resolved=$1
+    IFS='|' read -r ref source name path <<<"$resolved"
+
+    mkdir -p "$PROJECT_SKILLS"
+
+    if [ -e "$PROJECT_SKILLS/$name" ] || [ -L "$PROJECT_SKILLS/$name" ]; then
+        local existing_target
+        existing_target=$(python3 - "$PROJECT_SKILLS/$name" <<'PY'
+import os
+import sys
+print(os.path.realpath(sys.argv[1]))
+PY
+)
+        local resolved_target
+        resolved_target=$(python3 - "$path" <<'PY'
+import os
+import sys
+print(os.path.realpath(sys.argv[1]))
+PY
+)
+        if [ "$existing_target" != "$resolved_target" ]; then
+            echo "❌ Skill slot '$name' is already linked to a different source."
+            return 1
+        fi
+    fi
+
+    ln -sf "$path" "$PROJECT_SKILLS/$name"
+}
+
+list_available_skills() {
+    if [ -d "$CENTRAL_REPO/skills" ]; then
+        local skill
+        for skill in "$CENTRAL_REPO"/skills/*; do
+            [ -e "$skill" ] || continue
+            printf 'local:%s\n' "$(basename "$skill")"
+        done
+    fi
+
+    if [ -d "$CENTRAL_REPO/vendor" ]; then
+        local path
+        while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            local repo skill
+            repo=$(basename "$(dirname "$(dirname "$path")")")
+            skill=$(basename "$path")
+            if [[ "$skill" == *.md ]]; then
+                skill=${skill%.md}
+            fi
+            printf 'vendor:%s/%s\n' "$repo" "$skill"
+        done < <(find "$CENTRAL_REPO/vendor" -mindepth 3 -maxdepth 3 \( -type d -o -type f -name '*.md' \) -path '*/skills/*' 2>/dev/null | sort)
+    fi
+}
+
+list_available_bundles() {
+    if [ -f "$BUNDLES_FILE" ]; then
+        python3 - "$BUNDLES_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r") as f:
+    data = json.load(f)
+
+for name in sorted(data.keys()):
+    print(f"local:{name}")
+PY
+    fi
+}
+
+list_local_add_candidates() {
+    if [ -d "$CENTRAL_REPO/skills" ]; then
+        local skill
+        for skill in "$CENTRAL_REPO"/skills/*; do
+            [ -e "$skill" ] || continue
+            basename "$skill"
+        done
+    fi
+}
+
+list_vendor_repos() {
+    if [ -d "$CENTRAL_REPO/vendor" ]; then
+        local repo
+        for repo in "$CENTRAL_REPO"/vendor/*; do
+            [ -d "$repo" ] || continue
+            basename "$repo"
+        done
+    fi
+}
+
+list_vendor_repo_skills() {
+    local repo_name=$1
+    if [ -n "$repo_name" ] && [ -d "$CENTRAL_REPO/vendor/$repo_name" ]; then
+        python3 - "$CENTRAL_REPO/vendor/$repo_name" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+repo_dir = Path(sys.argv[1])
+index_candidates = [
+    repo_dir / "skills_index.json",
+    repo_dir / "skills-index.json",
+    repo_dir / "data" / "skills_index.json",
+    repo_dir / "data" / "skills-index.json",
+]
+index_path = next((p for p in index_candidates if p.exists()), None)
+if index_path is not None:
+    try:
+        data = json.loads(index_path.read_text())
+    except Exception:
+        data = None
+else:
+    data = None
+
+seen = set()
+
+if isinstance(data, dict):
+    data = data.get("skills")
+
+if isinstance(data, list):
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        skill_id = item.get("id") or item.get("name")
+        if not skill_id or skill_id in seen:
+            continue
+        seen.add(skill_id)
+        print(skill_id)
+else:
+    skills_dir = repo_dir / "skills"
+    if skills_dir.is_dir():
+        for path in sorted(skills_dir.iterdir()):
+            if path.is_dir():
+                skill_id = path.name
+            elif path.is_file() and path.suffix == ".md":
+                skill_id = path.stem
+            else:
+                continue
+            if skill_id in seen:
+                continue
+            seen.add(skill_id)
+            print(skill_id)
+PY
+    fi
+}
+
+list_bundle_candidates() {
+    if [ -f "$BUNDLES_FILE" ]; then
+        python3 - "$BUNDLES_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r") as f:
+    data = json.load(f)
+
+for name in sorted(data.keys()):
+    print(name)
+PY
+    fi
+}
+
+list_active_skill_refs() {
+    if [ -f "$MANIFEST_FILE" ]; then
+        while IFS=$'\t' read -r _ ref _ _; do
+            [ -n "$ref" ] && echo "$ref"
+        done < <(read_manifest_records)
+    fi
+}
+
+print_zsh_completion() {
+    cat <<'EOF'
+#compdef ai
+
+__ai_complete() {
+  command ai __complete "$@"
+}
+
+_ai() {
+  local cmd prev current_word
+  local vendor_index=0 vendor_repo=''
+  local -a commands skills bundles active repos add_options
+  local i
+
+  commands=(
+    'init:initialize a project workspace'
+    'sync:restore active skills from the manifest'
+    'install:compatibility alias for sync'
+    'add:add local skills, vendor skills, or bundles'
+    'remove:remove active skill refs'
+    'list:list available and active refs'
+    'completion:print shell completion script'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  cmd=${words[2]}
+  prev=${words[CURRENT-1]}
+  current_word=${words[CURRENT]:-}
+
+  case $cmd in
+    add)
+      for ((i=3; i<CURRENT; i++)); do
+        if [[ ${words[i]} == --vendor ]]; then
+          vendor_index=$i
+          vendor_repo=${words[i+1]:-}
+          break
+        fi
+      done
+
+      if [[ $prev == --bundle ]] || [[ " ${words[*]} " == *" --bundle "* ]]; then
+        bundles=("${(@f)$(__ai_complete bundle-candidates)}")
+        _describe 'bundle' bundles
+        return
+      fi
+
+      if [[ $prev == --vendor ]]; then
+        repos=("${(@f)$(__ai_complete vendor-repos)}")
+        _describe 'vendor repo' repos
+        return
+      fi
+
+      if (( vendor_index > 0 )) && [ -n "$vendor_repo" ]; then
+        skills=("${(@f)$(__ai_complete vendor-repo-skills "$vendor_repo")}")
+        _describe 'vendor skill' skills
+        return
+      fi
+
+      if [[ $PREFIX == --* ]]; then
+        add_options=(--bundle --vendor)
+        compadd -- $add_options
+        return
+      fi
+
+      if (( CURRENT == 3 )); then
+        add_options=(--bundle --vendor)
+        compadd -- $add_options
+      fi
+
+      skills=("${(@f)$(__ai_complete local-candidates)}")
+      _describe 'skill' skills
+      return
+      ;;
+    remove)
+      active=("${(@f)$(__ai_complete active)}")
+      _describe 'active skill' active
+      return
+      ;;
+    completion)
+      compadd -- zsh
+      return
+      ;;
+    *)
+      _describe 'command' commands
+      return
+      ;;
+  esac
+}
+
+compdef _ai ai
+EOF
+}
+
+cmd_completion() {
+    if [ "${1:-}" != "zsh" ]; then
+        echo "Usage: ai completion zsh"
+        exit 1
+    fi
+
+    print_zsh_completion
+}
+
+cmd_complete_internal() {
+    case "${1:-}" in
+        skills)
+            list_available_skills
+            ;;
+        local-candidates)
+            list_local_add_candidates
+            ;;
+        vendor-repos)
+            list_vendor_repos
+            ;;
+        vendor-repo-skills)
+            list_vendor_repo_skills "${2:-}"
+            ;;
+        bundles)
+            list_available_bundles
+            ;;
+        bundle-candidates)
+            list_bundle_candidates
+            ;;
+        active)
+            list_active_skill_refs
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+}
+
+# Command: init
+cmd_init() {
+    echo "🤖 Initializing AI workspace..."
+    mkdir -p "$PROJECT_SKILLS" .agents/agents .agents/commands .claude
+    ensure_manifest_file
+
+    if [ ! -f AGENTS.md ]; then
+        if [ -f "$AGENTS_TEMPLATE" ]; then
+            cp "$AGENTS_TEMPLATE" AGENTS.md
+        else
+            cat > AGENTS.md <<'EOF'
+# AGENTS.md
+
+Project-specific instructions for coding agents.
+EOF
+        fi
+    fi
+
+    if [ -d CLAUDE.md ] && [ ! -L CLAUDE.md ]; then
+        echo "❌ CLAUDE.md exists as a directory; refusing to overwrite."
+        exit 1
+    fi
+    ln -sf AGENTS.md CLAUDE.md
+
+    echo '{"skillsPath": ".agents/skills", "agentsPath": ".agents/agents"}' > .claude/settings.json
+
+    echo "✨ Project initialized. Compatible with Claude, Codex, and Antigravity."
+}
+
+# Command: sync
+cmd_sync() {
+    echo "📦 Installing skills from $MANIFEST_FILE..."
+    if [ ! -f "$MANIFEST_FILE" ]; then
+        echo "❌ No manifest file found. Run 'ai init' first."
+        exit 1
+    fi
+
+    # Ensure directories exist
+    mkdir -p "$PROJECT_SKILLS"
+
+    local ref source name via resolved
+    while IFS=$'\t' read -r name ref source via; do
+        [ -z "$ref" ] && continue
+        if resolved=$(resolve_skill "$ref"); then
+            if link_resolved_skill "$resolved"; then
+                echo "✅ Linked $source skill: $name ($ref)"
+            else
+                exit 1
+            fi
+        else
+            echo "⚠️  Warning: Skill '$ref' not found in central repo."
+        fi
+    done < <(read_manifest_records)
+}
+
+# Command: add
+cmd_add() {
+    if [ -z "$1" ]; then
+        echo "Usage: ai add <local-skill> | ai add --vendor <repo> <skill> | ai add --bundle <bundle>"
+        exit 1
+    fi
+
+    if [ "$1" = "--bundle" ]; then
+        if [ -z "${2:-}" ]; then
+            echo "Usage: ai add --bundle <bundle-ref>"
+            exit 1
+        fi
+
+        local bundle_name bundle_ref bundle_source skill_ref resolved
+        local bundle_lines=()
+        local bundle_line
+        while IFS= read -r bundle_line; do
+            bundle_lines+=("$bundle_line")
+        done < <(resolve_bundle "$2") || {
+            echo "❌ Bundle '$2' not found."
+            exit 1
+        }
+
+        bundle_name=${bundle_lines[0]}
+        bundle_ref=${bundle_lines[1]}
+        bundle_source=${bundle_lines[2]}
+        manifest_add_bundle "$bundle_name" "$bundle_ref" "$bundle_source"
+
+        local any_failed=0
+        local i
+        for ((i=3; i<${#bundle_lines[@]}; i++)); do
+            skill_ref=${bundle_lines[$i]}
+            if resolved=$(resolve_skill "$skill_ref"); then
+                IFS='|' read -r resolved_ref source name path <<<"$resolved"
+                if link_resolved_skill "$resolved"; then
+                    manifest_add_skill "$name" "$resolved_ref" "$source" "$bundle_ref"
+                    echo "📦 Added bundled $source skill: $name ($resolved_ref)"
+                else
+                    any_failed=1
+                fi
+            else
+                echo "❌ Bundled skill '$skill_ref' not found."
+                any_failed=1
+            fi
+        done
+
+        if [ "$any_failed" -ne 0 ]; then
+            exit 1
+        fi
+
+        echo "✅ Added bundle: $bundle_name ($bundle_ref)"
+        return
+    fi
+
+    if [ "$1" = "--vendor" ]; then
+        if [ -z "${2:-}" ] || [ -z "${3:-}" ]; then
+            echo "Usage: ai add --vendor <repo> <skill>"
+            exit 1
+        fi
+
+        local repo=$2
+        shift 2
+
+        local any_failed=0
+        local skill requested resolved ref source name path
+        for skill in "$@"; do
+            requested="vendor:$repo/$skill"
+            if ! resolved=$(resolve_skill "$requested"); then
+                echo "❌ Skill '$skill' not found in vendor repo '$repo'."
+                any_failed=1
+                continue
+            fi
+
+            IFS='|' read -r ref source name path <<<"$resolved"
+            if link_resolved_skill "$resolved"; then
+                manifest_add_skill "$name" "$ref" "$source"
+                echo "🌍 Added community skill: $name ($ref)"
+            else
+                any_failed=1
+            fi
+        done
+
+        if [ "$any_failed" -ne 0 ]; then
+            exit 1
+        fi
+        return
+    fi
+
+    local any_failed=0
+    local requested resolved ref source name path
+
+    for requested in "$@"; do
+        if ! resolved=$(resolve_skill "$requested"); then
+            echo "❌ Skill '$requested' not found in personal hub or vendor repos!"
+            any_failed=1
+            continue
+        fi
+
+        IFS='|' read -r ref source name path <<<"$resolved"
+        if link_resolved_skill "$resolved"; then
+            manifest_add_skill "$name" "$ref" "$source"
+            if [ "$source" = "local" ]; then
+                echo "🧑‍💻 Added personal skill: $name ($ref)"
+            else
+                echo "🌍 Added community skill: $name ($ref)"
+            fi
+        else
+            any_failed=1
+        fi
+    done
+
+    if [ "$any_failed" -ne 0 ]; then
+        exit 1
+    fi
+}
+
+# Command: remove
+cmd_remove() {
+    if [ -z "$1" ]; then
+        echo "Usage: ai remove <skill-ref>"
+        exit 1
+    fi
+
+    local target records
+
+    for target in "$@"; do
+        records=()
+        while IFS= read -r record; do
+            records+=("$record")
+        done < <(read_manifest_records | awk -F'\t' -v target="$target" '$1 == target || $2 == target { print $0 }')
+        if [ "${#records[@]}" -eq 0 ]; then
+            if [ -e "$PROJECT_SKILLS/$target" ] || [ -L "$PROJECT_SKILLS/$target" ]; then
+                rm -rf "$PROJECT_SKILLS/$target"
+                manifest_remove_skill "$target"
+                echo "🗑️  Removed skill: $target"
+            else
+                echo "⚠️  Skill '$target' not currently active."
+            fi
+            continue
+        fi
+
+        local record name ref
+        for record in "${records[@]}"; do
+            IFS=$'\t' read -r name ref _ <<<"$record"
+            rm -rf "$PROJECT_SKILLS/$name"
+            manifest_remove_skill "$ref"
+            echo "🗑️  Removed skill: $name ($ref)"
+        done
+    done
+}
+
+# Command: list
+cmd_list() {
+    echo "📦 Available Skills:"
+    if ! list_available_skills; then
+        echo "(none)"
+    fi
+    echo "---"
+    echo "📚 Available Bundles:"
+    if ! list_available_bundles; then
+        echo "(none)"
+    fi
+    echo "---"
+    echo "🔗 Active in Project (Manifest):"
+    local printed=0
+    while IFS=$'\t' read -r name ref source via; do
+        [ -z "$ref" ] && continue
+        printed=1
+        if [ -n "$via" ]; then
+            printf '%s [%s] via %s\n' "$ref" "$source" "$via"
+        else
+            printf '%s [%s]\n' "$ref" "$source"
+        fi
+    done < <(read_manifest_records)
+    if [ "$printed" -eq 0 ]; then
+        echo "(none)"
+    fi
+    echo "---"
+    echo "🧺 Active Bundles:"
+    local bundle_printed=0
+    if [ -f "$MANIFEST_FILE" ]; then
+        while IFS= read -r bundle; do
+            [ -z "$bundle" ] && continue
+            bundle_printed=1
+            echo "$bundle"
+        done < <(python3 - "$MANIFEST_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r") as f:
+    data = json.load(f)
+
+for bundle in data.get("bundles", []):
+    if isinstance(bundle, str):
+        print(bundle)
+    else:
+        print(f"{bundle.get('ref', bundle.get('name', ''))} [{bundle.get('source', 'legacy')}]")
+PY
+)
+    fi
+    if [ "$bundle_printed" -eq 0 ]; then
+        echo "(none)"
+    fi
+}
+
+# Main Dispatch
+case "$1" in
+    init)
+        cmd_init
+        ;;
+    sync)
+        shift
+        cmd_sync "$@"
+        ;;
+    install)
+        shift
+        cmd_sync "$@"
+        ;;
+    add)
+        shift
+        cmd_add "$@"
+        ;;
+    remove)
+        shift
+        cmd_remove "$@"
+        ;;
+    list)
+        cmd_list
+        ;;
+    completion)
+        shift
+        cmd_completion "$@"
+        ;;
+    __complete)
+        shift
+        cmd_complete_internal "$@"
+        ;;
+    *)
+        print_usage
+        exit 1
+        ;;
+esac

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "skills": [
+    {"id": "360-review", "path": "skills/360-review"},
+    {"id": "architect-critique", "path": "skills/architect-critique"},
+    {"id": "capture", "path": "skills/capture"},
+    {"id": "conversation-to-content", "path": "skills/conversation-to-content"},
+    {"id": "conversation-to-plan", "path": "skills/conversation-to-plan"},
+    {"id": "distill", "path": "skills/distill"},
+    {"id": "foam-capture", "path": "skills/foam-capture"},
+    {"id": "handoff", "path": "skills/handoff"},
+    {"id": "learn-it", "path": "skills/learn-it"},
+    {"id": "playwright-cli", "path": "skills/playwright-cli"},
+    {"id": "problem-solve", "path": "skills/problem-solve"},
+    {"id": "recap", "path": "skills/recap"},
+    {"id": "requirements-capture", "path": "skills/requirements-capture"}
+  ]
+}

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+INSTALL_DIR="${HOME}/.local/bin"
+UPDATE_PATH=1
+
+usage() {
+    cat <<'EOF'
+Usage: install-ai [--dir <path>] [--no-path]
+
+Installs the `ai` command by creating a symlink in the target directory.
+
+Options:
+  --dir <path>  Install directory (default: ~/.local/bin)
+  --no-path     Do not update shell rc files
+  -h, --help    Show this help
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dir)
+            if [ $# -lt 2 ]; then
+                echo "Error: --dir requires a path." >&2
+                exit 1
+            fi
+            INSTALL_DIR="$2"
+            shift 2
+            ;;
+        --no-path)
+            UPDATE_PATH=0
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option '$1'." >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+AI_SOURCE="${SCRIPT_DIR}/ai"
+AI_TARGET="${INSTALL_DIR}/ai"
+
+if [ ! -f "${AI_SOURCE}" ]; then
+    echo "Error: could not find ai script at ${AI_SOURCE}" >&2
+    exit 1
+fi
+
+mkdir -p "${INSTALL_DIR}"
+
+if [ -d "${AI_TARGET}" ] && [ ! -L "${AI_TARGET}" ]; then
+    echo "Error: ${AI_TARGET} is a directory. Remove it and rerun." >&2
+    exit 1
+fi
+
+ln -sfn "${AI_SOURCE}" "${AI_TARGET}"
+
+path_line="export PATH=\"${INSTALL_DIR}:\$PATH\""
+completion_line="eval \"\$(${AI_TARGET} completion zsh 2>/dev/null)\""
+
+append_if_missing() {
+    local file="$1"
+    local line="$2"
+    if [ ! -f "${file}" ]; then
+        touch "${file}"
+    fi
+
+    if ! grep -Fqx "${line}" "${file}"; then
+        printf '\n%s\n' "${line}" >> "${file}"
+        echo "Updated ${file}"
+    fi
+}
+
+if [ "${UPDATE_PATH}" -eq 1 ]; then
+    append_if_missing "${HOME}/.zshrc" "${path_line}"
+    append_if_missing "${HOME}/.zshrc" "${completion_line}"
+    append_if_missing "${HOME}/.bashrc" "${path_line}"
+fi
+
+echo "Installed: ${AI_TARGET} -> ${AI_SOURCE}"
+if [ "${UPDATE_PATH}" -eq 1 ]; then
+    echo "Open a new shell (or run: source ~/.zshrc or source ~/.bashrc)."
+    echo "Zsh completion hook added to ~/.zshrc."
+fi

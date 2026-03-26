@@ -1,0 +1,10 @@
+{
+  "basic": {
+    "description": "Small default pack for note capture, handoff, and recap workflows.",
+    "skills": [
+      "local:capture",
+      "local:handoff",
+      "local:recap"
+    ]
+  }
+}
