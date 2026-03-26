@@ -4,7 +4,14 @@ Personal dotfiles for AI prompts, skills, agent templates, and bootstrap workflo
 
 ## 🚀 Overview
 
-Just like personal dotfiles for your shell, **promptops-dotfiles** centralizes your opinionated AI prompts and vendor-provided community skills so you can selectively inject them into projects.
+If you keep re-copying prompts, agent instructions, and reusable skills across projects, this repo gives you one place to manage them.
+
+**promptops-dotfiles** is a small personal promptops hub:
+
+- keep reusable local skills in one repo
+- install third-party skill catalogs once and use them locally
+- bootstrap new projects with a consistent `AGENTS.md`
+- inject only the skills a project actually needs
 
 ### Key Benefits
 - **DRY (Don't Repeat Yourself):** Edit a prompt once in `~/.promptops-dotfiles` and it updates everywhere.
@@ -12,6 +19,18 @@ Just like personal dotfiles for your shell, **promptops-dotfiles** centralizes y
 - Tool Agnostic: Cross-compatible with Claude (`CLAUDE.md`), Codex/Antigravity (`.agents/`).
 - **Manifest Tracking:** Uses `.agentic.json` to manage project-specific skill state robustly.
 - **Explicit Provenance:** Namespaced refs such as `local:capture` and `vendor:repo/skill` keep source details in the manifest.
+
+### What You Can Do
+
+```bash
+ai vendor list
+ai vendor install https://github.com/sickn33/antigravity-awesome-skills.git
+
+mkdir my-project && cd my-project
+ai init
+ai add capture
+ai add --vendor antigravity-awesome-skills mcp-builder
+```
 
 ---
 
